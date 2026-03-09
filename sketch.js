@@ -3,10 +3,12 @@
 let video;
 let handPose;
 let hands = [];
+let gloveImage;
 
 function preload() {
   // Initialize HandPose model with flipped video input
   handPose = ml5.handPose({ flipped: true });
+  gloveImage = loadImage('gloves.png'); // Load glove image
 }
 
 function mousePressed() {
@@ -28,27 +30,44 @@ function setup() {
 }
 
 function draw() {
-  image(video, 0, 0, windowWidth, windowHeight);
-  background(0);
-  // Ensure at least one hand is detected
-  if (hands.length > 0) {
+    background(0);
+    if (hands.length > 0) {
     for (let hand of hands) {
-      if (hand.confidence > 0.1) {
-        // Loop through keypoints and draw circles
-        for (let i = 0; i < hand.keypoints.length; i++) {
-          let keypoint = hand.keypoints[i];
 
-          // Color-code based on left or right hand
-          if (hand.handedness == "Left") {
-            fill(255, 0, 255);
-          } else {
-            fill(255, 255, 0);
-          }
+        let wrist = hand.keypoints[0];
+        let middle = hand.keypoints[9];
 
-          noStroke();
-          circle(keypoint.x, keypoint.y, 16);
+        // Calculate rotation angle
+        let angle = atan2(middle.y - wrist.y, middle.x - wrist.x);
+
+        // Calculate hand size
+        let handSize = dist(wrist.x, wrist.y, middle.x, middle.y);
+
+        push();
+
+        translate(wrist.x, wrist.y);
+        rotate(angle + HALF_PI); // Rotate to align with hand direction
+        
+        // scale glove relative to hand size
+        let scaleFactor = handSize / 100;
+
+        // Flip glove for right hand
+        if (hand.handedness === "Right") {
+        scale(-1, 1);
         }
-      }
+
+        
+        imageMode(CENTER);
+        image(
+            gloveImage,
+            0,
+            -handSize * 0.5,
+            gloveImage.width * scaleFactor,
+            gloveImage.height * scaleFactor
+
+        );
+
+        pop();
     }
   }
 }
