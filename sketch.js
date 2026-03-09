@@ -1,4 +1,5 @@
-// Using codingTrain reference
+// Using codingTrain reference for hand recognition with ml5.js
+// Used ChatGPT to map the glove to the hand keypoints
 
 let video;
 let handPose;
@@ -56,7 +57,6 @@ function draw() {
         scale(-1, 1);
         }
 
-        
         imageMode(CENTER);
         image(
             gloveImage,
