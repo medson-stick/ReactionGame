@@ -22,7 +22,9 @@ let gloveImage;
 let hitZoneImage;
 let indicatorImage;
 let boardImage;
+
 let song;
+let popSound;
 
 let songStarted = false;
 let songReady = false;
@@ -181,6 +183,12 @@ function preload() {
     "board.png",
     () => console.log("board.png loaded"),
     (err) => console.warn("Could not load board.png:", err)
+  );
+
+  popSound = loadSound(
+    "pop.mp3",
+    () => console.log("Pop sound loaded"),
+    (err) => console.warn("Pop sound failed to load:", err)
   );
 
   song = loadSound(
@@ -593,6 +601,12 @@ function checkHits(currentTime) {
 
         lastHitMessage = "HIT!";
         lastHitTimer = 12;
+
+        // 🔊 PLAY POP SOUND
+        if (popSound && popSound.isLoaded()) {
+          popSound.play();
+        }
+        
         break;
       }
     }
