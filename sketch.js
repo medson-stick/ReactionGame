@@ -21,6 +21,7 @@ let hands = [];
 let gloveImage;
 let hitZoneImage;
 let indicatorImage;
+let boardImage;
 let song;
 
 let songStarted = false;
@@ -103,7 +104,7 @@ const PLAYFIELD = {
 // EDITABLE VISUAL SETTINGS
 // -----------------------------
 const VISUALS = {
-  targetRadius: 102,
+  targetRadius: 72,
   beatRadius: 24,
   hitWindow: 0.22,
   handRadius: 34,
@@ -148,10 +149,13 @@ let maxCombo = 0;
 let lastHitMessage = "";
 let lastHitTimer = 0;
 let targetFlashTimers = [0, 0, 0, 0];
+let comboPulseTimer = 0;
 
 // =====================================================
 // PRELOAD
 // =====================================================
+let gameFont;
+
 function preload() {
   handPose = ml5.handPose({ flipped: true });
 
@@ -171,6 +175,12 @@ function preload() {
     "indicator.png",
     () => console.log("indicator.png loaded"),
     (err) => console.warn("Could not load indicator.png:", err)
+  );
+
+  boardImage = loadImage(
+    "board.png",
+    () => console.log("board.png loaded"),
+    (err) => console.warn("Could not load board.png:", err)
   );
 
   song = loadSound(
@@ -574,9 +584,13 @@ function checkHits(currentTime) {
       if (note.hoveredBy.has(hp.id)) {
         note.judged = true;
         note.result = "hit";
+
         score++;
         combo++;
+        comboPulseTimer = 12;
+
         if (combo > maxCombo) maxCombo = combo;
+
         lastHitMessage = "HIT!";
         lastHitTimer = 12;
         break;
@@ -927,26 +941,53 @@ function drawHands() {
 // =====================================================
 function drawUI(currentTime) {
   push();
-  fill(255);
-  textAlign(LEFT, TOP);
-  textSize(26);
-  text("Score: " + score, 20, 20);
-  text("Combo: " + combo, 20, 54);
 
-  textSize(15);
-  text("Time: " + currentTime.toFixed(2), 20, 88);
-  text("Notes: " + beatMap.length, 20, 108);
-  text("Tracked Hands: " + trackedHands.length, 20, 128);
+  const boardW = 260;
+  const boardH = 180;
+  const margin = 20;
+  const bx = width - boardW - margin;
+  const by = margin;
 
-  if (lastHitTimer > 0) {
-    textAlign(CENTER, CENTER);
-    textSize(40);
-
-    if (lastHitMessage === "HIT!") fill(80, 255, 120);
-    else fill(255, 80, 80);
-
-    text(lastHitMessage, width / 2, 50);
+  if (boardImage) {
+    imageMode(CORNER);
+    image(boardImage, bx, by, boardW, boardH);
   }
+
+  textFont("Comic Sans MS");
+  textAlign(CENTER, CENTER);
+
+  // Bounce only when a hit just happened
+  let t = comboPulseTimer / 12;
+  let comboScale = 1 + 0.25 * (t * t);
+
+  // Score shadow
+  push();
+  fill(0, 0, 0, 90);
+  textSize(32);
+  textStyle(BOLD);
+  text(nf(score, 6), bx + boardW / 2 + 3, by + boardH * 0.42 + 3);
+  pop();
+
+  // Score text
+  fill(40, 30, 20);
+  textSize(32);
+  textStyle(BOLD);
+  text(nf(score, 6), bx + boardW / 2, by + boardH * 0.42);
+
+  // Combo shadow
+  push();
+  fill(0, 0, 0, 85);
+  textStyle(NORMAL);
+  textSize(22 * comboScale);
+  text(combo + "x", bx + boardW / 2 + 2, by + boardH * 0.55 + 2);
+  pop();
+
+  // Combo text
+  fill(50, 40, 25);
+  textStyle(NORMAL);
+  textSize(22 * comboScale);
+  text(combo + "x", bx + boardW / 2, by + boardH * 0.55);
+
   pop();
 }
 
@@ -982,6 +1023,8 @@ function drawStartScreen() {
 // =====================================================
 function updateTimers() {
   if (lastHitTimer > 0) lastHitTimer--;
+
+  if (comboPulseTimer > 0) comboPulseTimer--;
 
   for (let i = 0; i < targetFlashTimers.length; i++) {
     if (targetFlashTimers[i] > 0) targetFlashTimers[i]--;
