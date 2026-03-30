@@ -146,11 +146,9 @@ const CHART_SECTIONS = [
 // -----------------------------
 // GAME STATE
 // -----------------------------
-let targets = [];
 let beatMap = [];
 let score = 0;
 let combo = 0;
-let maxCombo = 0;
 
 let targetFlashTimers = [0, 0, 0, 0];
 let comboPulseTimer = 0;
@@ -159,13 +157,10 @@ let titleFade = 0;
 let titlePulse = 0;
 let startingGame = false;
 let startFade = 0;
-let gameHasStartedOnce = false;
 
 // =====================================================
 // PRELOAD
 // =====================================================
-let gameFont;
-
 function preload() {
   handPose = ml5.handPose({ flipped: true });
 
@@ -239,6 +234,7 @@ function gotHands(results) {
 // =====================================================
 function setup() {
   createCanvas(windowWidth, windowHeight);
+  textFont("Comic Sans MS");
 
   video = createCapture(VIDEO, { flipped: true });
 
@@ -250,15 +246,7 @@ function setup() {
 
   handPose.detectStart(video, gotHands);
 
-  setupTargets();
   buildBeatMap();
-}
-
-// =====================================================
-// SETUP TARGET CONTAINER
-// =====================================================
-function setupTargets() {
-  targets = [];
 }
 
 // =====================================================
@@ -494,7 +482,6 @@ function getSpawnPointForNote(note, previousNote) {
 // =====================================================
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
-  setupTargets();
 }
 
 function drawAnimatedBackground() {
@@ -565,7 +552,7 @@ function draw() {
 // START / PAUSE
 // =====================================================
 async function mousePressed() {
-  if (!songStarted && !startingGame && !gameHasStartedOnce) {
+  if (!songStarted && !startingGame) {
     await beginStartTransition();
     return;
   }
@@ -575,7 +562,7 @@ async function mousePressed() {
 
 async function keyPressed() {
   if (key === " " || keyCode === 32) {
-    if (!songStarted && !startingGame && !gameHasStartedOnce) {
+    if (!songStarted && !startingGame) {
       await beginStartTransition();
       return false;
     }
@@ -679,8 +666,6 @@ function checkHits(currentTime) {
         score++;
         combo++;
         comboPulseTimer = 12;
-
-        if (combo > maxCombo) maxCombo = combo;
 
         // PLAY POP SOUND
         if (popSound && popSound.isLoaded()) {
@@ -1097,6 +1082,7 @@ function drawStartScreen() {
   rect(0, 0, width, height);
 
   textAlign(CENTER, CENTER);
+  textFont("Comic Sans MS");
 
   // subtle pulsing for osu-like feel
   let pulse = 1 + sin(titlePulse) * 0.02;
@@ -1109,11 +1095,11 @@ function drawStartScreen() {
   fill(120, 200, 255, titleFade * 0.35);
   textStyle(BOLD);
   textSize(82);
-  text("jot tracks", 0, 4);
+  text("Jot Tracks", 0, 4);
 
   fill(255, titleFade);
   textSize(78);
-  text("jot tracks", 0, 0);
+  text("Jot Tracks", 0, 0);
   pop();
 
   // subtitle / start prompt
