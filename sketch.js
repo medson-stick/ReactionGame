@@ -22,9 +22,13 @@ let gloveImage;
 let hitZoneImage;
 let indicatorImage;
 let boardImage;
+let backgroundImage;
+
+let bgAnimTime = 0;
 
 let song;
 let popSound;
+let whooshSound;
 
 let songStarted = false;
 let songReady = false;
@@ -148,10 +152,14 @@ let score = 0;
 let combo = 0;
 let maxCombo = 0;
 
-let lastHitMessage = "";
-let lastHitTimer = 0;
 let targetFlashTimers = [0, 0, 0, 0];
 let comboPulseTimer = 0;
+
+let titleFade = 0;
+let titlePulse = 0;
+let startingGame = false;
+let startFade = 0;
+let gameHasStartedOnce = false;
 
 // =====================================================
 // PRELOAD
@@ -166,6 +174,12 @@ function preload() {
     () => console.log("gloves.png loaded"),
     (err) => console.warn("Could not load gloves.png:", err)
   );
+
+  backgroundImage = loadImage(
+  "background.png",
+  () => console.log("background.png loaded"),
+  (err) => console.warn("Could not load background.png:", err)
+  );  
 
   hitZoneImage = loadImage(
     "hitZone.png",
@@ -191,6 +205,15 @@ function preload() {
     (err) => console.warn("Pop sound failed to load:", err)
   );
 
+  whooshSound = loadSound(
+  "whoosh.mp3",
+  () => {
+    console.log("Whoosh sound loaded");
+    whooshSound.setVolume(0.08); // 👈 change this
+  },
+  (err) => console.warn("Whoosh sound failed to load:", err)
+);
+  
   song = loadSound(
     SONG_CONFIG.audioFile,
     () => {
@@ -474,11 +497,41 @@ function windowResized() {
   setupTargets();
 }
 
+function drawAnimatedBackground() {
+  bgAnimTime += 0.01;
+
+  let scaleAmount = 1.10;
+  let imgW = width * scaleAmount;
+  let imgH = height * scaleAmount;
+
+  let driftX = sin(bgAnimTime * 0.4) * 20;
+  let driftY = cos(bgAnimTime * 0.3) * 14;
+
+  let mouseOffsetX = map(mouseX, 0, width, -18, 18);
+  let mouseOffsetY = map(mouseY, 0, height, -12, 12);
+
+  let x = (width - imgW) / 2 + driftX + mouseOffsetX;
+  let y = (height - imgH) / 2 + driftY + mouseOffsetY;
+
+  imageMode(CORNER);
+  image(backgroundImage, x, y, imgW, imgH);
+
+  push();
+  noStroke();
+  fill(0, 0, 0, 55);
+  rect(0, 0, width, height);
+  pop();
+}
+
 // =====================================================
 // MAIN DRAW LOOP
 // =====================================================
 function draw() {
+  if (backgroundImage) {
+  drawAnimatedBackground();
+} else {
   background(12);
+}
 
   if (VISUALS.showVideoFeed) {
     push();
@@ -490,11 +543,13 @@ function draw() {
   drawTargets();
 
   if (!songStarted) {
-    drawHands();
-    drawStartScreen();
-    updateTimers();
-    return;
-  }
+  drawHands();
+  drawStartScreen();
+  updateTitleScreen();
+  updateStartTransition();
+  updateTimers();
+  return;
+}
 
   let currentTime = getCurrentSongTime();
 
@@ -510,13 +565,43 @@ function draw() {
 // START / PAUSE
 // =====================================================
 async function mousePressed() {
+  if (!songStarted && !startingGame && !gameHasStartedOnce) {
+    await beginStartTransition();
+    return;
+  }
+
   await toggleSongPlayback();
 }
 
 async function keyPressed() {
   if (key === " " || keyCode === 32) {
+    if (!songStarted && !startingGame && !gameHasStartedOnce) {
+      await beginStartTransition();
+      return false;
+    }
+
     await toggleSongPlayback();
     return false;
+  }
+}
+
+async function beginStartTransition() {
+  try {
+    await userStartAudio();
+
+    if (!songReady) {
+      console.warn("Song is not ready yet.");
+      return;
+    }
+
+    startingGame = true;
+    startFade = 0;
+
+    if (whooshSound && whooshSound.isLoaded()) {
+      whooshSound.play();
+    }
+  } catch (err) {
+    console.error("Start transition failed:", err);
   }
 }
 
@@ -556,8 +641,6 @@ function judgeMisses(currentTime) {
       note.judged = true;
       note.result = "miss";
       combo = 0;
-      lastHitMessage = "MISS";
-      lastHitTimer = 18;
     }
   }
 }
@@ -599,14 +682,11 @@ function checkHits(currentTime) {
 
         if (combo > maxCombo) maxCombo = combo;
 
-        lastHitMessage = "HIT!";
-        lastHitTimer = 12;
-
-        // 🔊 PLAY POP SOUND
+        // PLAY POP SOUND
         if (popSound && popSound.isLoaded()) {
           popSound.play();
         }
-        
+
         break;
       }
     }
@@ -1010,34 +1090,85 @@ function drawUI(currentTime) {
 // =====================================================
 function drawStartScreen() {
   push();
+
+  // soft dark overlay
+  noStroke();
+  fill(0, 0, 0, 140);
+  rect(0, 0, width, height);
+
   textAlign(CENTER, CENTER);
 
-  fill(255);
-  textSize(34);
-  text("CLICK OR PRESS SPACE TO START", width / 2, height / 2 - 20);
+  // subtle pulsing for osu-like feel
+  let pulse = 1 + sin(titlePulse) * 0.02;
 
-  textSize(18);
+  // title glow
+  push();
+  translate(width / 2, height / 2 - 40);
+  scale(pulse);
+
+  fill(120, 200, 255, titleFade * 0.35);
+  textStyle(BOLD);
+  textSize(82);
+  text("jot tracks", 0, 4);
+
+  fill(255, titleFade);
+  textSize(78);
+  text("jot tracks", 0, 0);
+  pop();
+
+  // subtitle / start prompt
+  let promptAlpha = map(sin(titlePulse * 1.6), -1, 1, 140, 255) * (titleFade / 255);
+
+  textStyle(NORMAL);
+  textSize(22);
 
   if (songLoadError) {
-    fill(255, 120, 120);
-    text("Song failed to load. Check the mp3 filename.", width / 2, height / 2 + 28);
+    fill(255, 120, 120, titleFade);
+    text("Song failed to load. Check the mp3 filename.", width / 2, height / 2 + 42);
   } else if (!songReady) {
-    fill(220);
-    text("Loading song...", width / 2, height / 2 + 28);
+    fill(220, titleFade);
+    text("loading...", width / 2, height / 2 + 42);
   } else {
-    fill(200);
-    text("Improved hand tracking ready", width / 2, height / 2 + 28);
+    fill(255, promptAlpha);
+    text("click to start", width / 2, height / 2 + 42);
+
+    fill(180, 200, 220, titleFade * 0.85);
+    textSize(14);
+    text("or press space", width / 2, height / 2 + 74);
   }
 
   pop();
+}
+
+function updateTitleScreen() {
+  titleFade = min(titleFade + 4, 255);
+  titlePulse += 0.04;
+}
+
+async function updateStartTransition() {
+  if (!startingGame) return;
+
+  startFade += 10;
+
+  // draw fade overlay
+  push();
+  noStroke();
+  fill(0, 0, 0, startFade);
+  rect(0, 0, width, height);
+  pop();
+
+  // once fully faded → start song
+  if (startFade >= 255) {
+    startingGame = false;
+    startFade = 0;
+    await toggleSongPlayback();
+  }
 }
 
 // =====================================================
 // TIMERS
 // =====================================================
 function updateTimers() {
-  if (lastHitTimer > 0) lastHitTimer--;
-
   if (comboPulseTimer > 0) comboPulseTimer--;
 
   for (let i = 0; i < targetFlashTimers.length; i++) {
