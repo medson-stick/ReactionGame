@@ -187,7 +187,10 @@ function setup() {
 
   video = createCapture(VIDEO, { flipped: true });
 
-  video.size(windowWidth, windowHeight);
+  // Lower camera resolution often improves tracking stability / FPS.
+  // The model still maps correctly because its output is already in the
+  // displayed video coordinate space.
+  video.size(640, 480);
   video.hide();
 
   handPose.detectStart(video, gotHands);
@@ -605,17 +608,31 @@ function smoothAngle(currentAngle, targetAngle, amount) {
 function buildRawHands() {
   let rawHands = [];
 
+  // Use the same fixed capture size you set in setup()
+  const camW = 640;
+  const camH = 480;
+
+  let scaleX = width / camW;
+  let scaleY = height / camH;
+
   for (let hand of hands) {
     let palm = getPalmCenter(hand);
     let wrist = hand.keypoints[0];
     let middleBase = hand.keypoints[9];
 
-    let rawAngle = atan2(middleBase.y - wrist.y, middleBase.x - wrist.x);
-    let handSize = dist(wrist.x, wrist.y, middleBase.x, middleBase.y);
+    let palmX = palm.x * scaleX;
+    let palmY = palm.y * scaleY;
+    let wristX = wrist.x * scaleX;
+    let wristY = wrist.y * scaleY;
+    let middleX = middleBase.x * scaleX;
+    let middleY = middleBase.y * scaleY;
+
+    let rawAngle = atan2(middleY - wristY, middleX - wristX);
+    let handSize = dist(wristX, wristY, middleX, middleY);
 
     rawHands.push({
-      x: palm.x,
-      y: palm.y,
+      x: palmX,
+      y: palmY,
       angle: rawAngle,
       handedness: hand.handedness,
       size: handSize
