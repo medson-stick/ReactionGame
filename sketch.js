@@ -39,6 +39,8 @@ let songLoadError = false;
 // -----------------------------
 let trackedHands = [];
 let nextTrackedHandId = 0;
+let handTrackingStarted = false;
+let cameraReady = false;
 
 const TRACKING = {
   // Matching / lifecycle
@@ -236,19 +238,22 @@ function setup() {
   createCanvas(windowWidth, windowHeight);
   textFont("Comic Sans MS");
 
-  video = createCapture(VIDEO, { flipped: true });
+  video = createCapture(VIDEO, () => {
+    cameraReady = true;
+    console.log("Camera ready");
+  });
 
-  // Lower camera resolution often improves tracking stability / FPS.
-  // The model still maps correctly because its output is already in the
-  // displayed video coordinate space.
   video.size(640, 480);
   video.hide();
 
-  handPose.detectStart(video, gotHands);
+  // helps mobile / browser autoplay camera behavior
+  if (video.elt) {
+    video.elt.setAttribute("playsinline", "");
+    video.elt.muted = true;
+  }
 
   buildBeatMap();
 }
-
 // =====================================================
 // PLAYFIELD HELPERS
 // =====================================================
@@ -510,10 +515,30 @@ function drawAnimatedBackground() {
   pop();
 }
 
+function ensureHandTrackingStarted() {
+  if (handTrackingStarted) return;
+  if (!cameraReady) return;
+  if (!video || !video.elt) return;
+
+  const vw = video.elt.videoWidth || video.width;
+  const vh = video.elt.videoHeight || video.height;
+
+  if (!vw || !vh) return;
+
+  try {
+    handPose.detectStart(video, gotHands);
+    handTrackingStarted = true;
+    console.log("Hand tracking started");
+  } catch (err) {
+    console.error("Failed to start hand tracking:", err);
+  }
+}
+
 // =====================================================
 // MAIN DRAW LOOP
 // =====================================================
 function draw() {
+  ensureHandTrackingStarted();
   if (backgroundImage) {
   drawAnimatedBackground();
 } else {
@@ -682,17 +707,30 @@ function checkHits(currentTime) {
 // TRACKING HELPERS
 // =====================================================
 function getPalmCenter(hand) {
+  if (!hand || !hand.keypoints) {
+    return { x: 0, y: 0 };
+  }
+
   let x = 0;
   let y = 0;
+  let count = 0;
 
   for (let id of TRACKING.palmPointIds) {
-    x += hand.keypoints[id].x;
-    y += hand.keypoints[id].y;
+    let kp = hand.keypoints[id];
+    if (!kp) continue;
+
+    x += kp.x;
+    y += kp.y;
+    count++;
+  }
+
+  if (count === 0) {
+    return { x: 0, y: 0 };
   }
 
   return {
-    x: x / TRACKING.palmPointIds.length,
-    y: y / TRACKING.palmPointIds.length
+    x: x / count,
+    y: y / count
   };
 }
 
@@ -715,16 +753,28 @@ function smoothAngle(currentAngle, targetAngle, amount) {
 function buildRawHands() {
   let rawHands = [];
 
-  // HandPose keypoints come back in video-space.
-  // Since the video is captured at 640x480 but the canvas is fullscreen,
-  // map those coordinates into canvas-space before tracking.
-  let scaleX = width / video.width;
-  let scaleY = height / video.height;
+  if (!video || !video.elt) return rawHands;
+  if (!hands || hands.length === 0) return rawHands;
+
+  // Use actual video stream dimensions when available.
+  let sourceW = video.elt.videoWidth || video.width || 640;
+  let sourceH = video.elt.videoHeight || video.height || 480;
+
+  if (!sourceW || !sourceH) return rawHands;
+
+  let scaleX = width / sourceW;
+  let scaleY = height / sourceH;
 
   for (let hand of hands) {
-    let palm = getPalmCenter(hand);
-    let wrist = hand.keypoints[0];
-    let middleBase = hand.keypoints[9];
+    let keypoints = hand.keypoints || hand.landmarks || hand.keypoints3D;
+
+    if (!keypoints || keypoints.length < 18) continue;
+
+    let palm = getPalmCenter({ keypoints });
+    let wrist = keypoints[0];
+    let middleBase = keypoints[9];
+
+    if (!palm || !wrist || !middleBase) continue;
 
     let palmX = palm.x * scaleX;
     let palmY = palm.y * scaleY;
@@ -733,6 +783,14 @@ function buildRawHands() {
     let middleX = middleBase.x * scaleX;
     let middleY = middleBase.y * scaleY;
 
+    if (
+      !isFinite(palmX) || !isFinite(palmY) ||
+      !isFinite(wristX) || !isFinite(wristY) ||
+      !isFinite(middleX) || !isFinite(middleY)
+    ) {
+      continue;
+    }
+
     let rawAngle = atan2(middleY - wristY, middleX - wristX);
     let handSize = dist(wristX, wristY, middleX, middleY);
 
@@ -740,7 +798,7 @@ function buildRawHands() {
       x: palmX,
       y: palmY,
       angle: rawAngle,
-      handedness: hand.handedness,
+      handedness: hand.handedness || hand.label || "Unknown",
       size: handSize
     });
   }
@@ -974,6 +1032,9 @@ function drawHands() {
 
   if (VISUALS.showHandDebug) {
     for (let hp of handsNow) {
+      if (!isFinite(hp.hitX) || !isFinite(hp.hitY)) continue;
+      if (!isFinite(hp.visualX) || !isFinite(hp.visualY)) continue;
+
       push();
       noFill();
       stroke(255, 255, 0);
@@ -991,15 +1052,19 @@ function drawHands() {
 
   for (let hp of handsNow) {
     if (!gloveImage) continue;
+    if (!gloveImage.width || !gloveImage.height) continue;
+    if (!isFinite(hp.visualX) || !isFinite(hp.visualY)) continue;
+    if (!isFinite(hp.visualAngle)) continue;
 
-    let desiredGloveHeight = VISUALS.targetRadius * 1.55;
+    let desiredGloveHeight = VISUALS.targetRadius * 1.55 * VISUALS.gloveSizeMultiplier;
     let scaleFactor = desiredGloveHeight / gloveImage.height;
+    let handed = String(hp.handedness || "").toLowerCase();
 
     push();
     translate(hp.visualX, hp.visualY);
     rotate(hp.visualAngle + HALF_PI);
 
-    if (hp.handedness === "Right") {
+    if (handed.includes("right")) {
       scale(-1, 1);
     }
 
@@ -1014,7 +1079,6 @@ function drawHands() {
     pop();
   }
 }
-
 // =====================================================
 // UI
 // =====================================================
