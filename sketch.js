@@ -19,6 +19,8 @@ let handPose;
 let hands = [];
 
 let gloveImage;
+let hitZoneImage;
+let indicatorImage;
 let song;
 
 let songStarted = false;
@@ -101,7 +103,7 @@ const PLAYFIELD = {
 // EDITABLE VISUAL SETTINGS
 // -----------------------------
 const VISUALS = {
-  targetRadius: 72,
+  targetRadius: 102,
   beatRadius: 24,
   hitWindow: 0.22,
   handRadius: 34,
@@ -157,6 +159,18 @@ function preload() {
     "gloves.png",
     () => console.log("gloves.png loaded"),
     (err) => console.warn("Could not load gloves.png:", err)
+  );
+
+  hitZoneImage = loadImage(
+    "hitZone.png",
+    () => console.log("hitZone.png loaded"),
+    (err) => console.warn("Could not load hitZone.png:", err)
+  );
+
+  indicatorImage = loadImage(
+    "indicator.png",
+    () => console.log("indicator.png loaded"),
+    (err) => console.warn("Could not load indicator.png:", err)
   );
 
   song = loadSound(
@@ -608,12 +622,11 @@ function smoothAngle(currentAngle, targetAngle, amount) {
 function buildRawHands() {
   let rawHands = [];
 
-  // Use the same fixed capture size you set in setup()
-  const camW = 640;
-  const camH = 480;
-
-  let scaleX = width / camW;
-  let scaleY = height / camH;
+  // HandPose keypoints come back in video-space.
+  // Since the video is captured at 640x480 but the canvas is fullscreen,
+  // map those coordinates into canvas-space before tracking.
+  let scaleX = width / video.width;
+  let scaleY = height / video.height;
 
   for (let hand of hands) {
     let palm = getPalmCenter(hand);
@@ -785,24 +798,36 @@ function drawTargets() {
     if (timeUntilHit > SONG_CONFIG.approachTime) continue;
     if (timeSinceHit > VISUALS.hitWindow) continue;
 
-    push();
+    let approachProgress = 1 - (timeUntilHit / SONG_CONFIG.approachTime);
+    approachProgress = constrain(approachProgress, 0, 1);
 
-    if (!note.judged) {
-      fill(80, 140, 255, 95);
-    } else {
-      fill(255, 80, 80, 90);
+    let zoneAlpha = lerp(0, 255, approachProgress);
+
+    if (note.judged && note.result === "miss") {
+      zoneAlpha = 220;
     }
 
-    stroke(255);
-    strokeWeight(3);
-    circle(note.x, note.y, VISUALS.targetRadius * 2);
-
-    noFill();
-    stroke(255, 130);
-    strokeWeight(2);
-    circle(note.x, note.y, VISUALS.targetRadius * 1.45);
-
-    pop();
+    if (hitZoneImage) {
+      push();
+      imageMode(CENTER);
+      tint(255, zoneAlpha);
+      image(
+        hitZoneImage,
+        note.x,
+        note.y,
+        VISUALS.targetRadius * 2.6,
+        VISUALS.targetRadius * 2.6
+      );
+      noTint();
+      pop();
+    } else {
+      push();
+      fill(80, 140, 255, zoneAlpha);
+      stroke(255, zoneAlpha);
+      strokeWeight(3);
+      circle(note.x, note.y, VISUALS.targetRadius * 2.6);
+      pop();
+    }
   }
 }
 
@@ -825,18 +850,25 @@ function drawBeats(currentTime) {
     let x = lerp(note.spawnX, note.x, progress);
     let y = lerp(note.spawnY, note.y, progress);
 
+    let indicatorAlpha = lerp(0, 255, progress);
+
     push();
-    noStroke();
-    fill(255, 210, 110);
-    circle(x, y, VISUALS.beatRadius * 2);
-
-    stroke(255, 45);
-    line(x, y, note.x, note.y);
-
-    noFill();
-    stroke(255, 120);
-    let ringSize = map(progress, 0, 1, VISUALS.beatRadius * 5, VISUALS.beatRadius * 2.2);
-    circle(x, y, ringSize);
+    if (indicatorImage) {
+      imageMode(CENTER);
+      tint(255, indicatorAlpha);
+      image(
+        indicatorImage,
+        x,
+        y,
+        VISUALS.beatRadius * 2.4,
+        VISUALS.beatRadius * 2.4
+      );
+      noTint();
+    } else {
+      noStroke();
+      fill(255, 210, 110, indicatorAlpha);
+      circle(x, y, VISUALS.beatRadius * 2.4);
+    }
     pop();
   }
 }
